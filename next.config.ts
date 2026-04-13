@@ -8,9 +8,7 @@ const nextConfig: NextConfig = {
     };
     return config;
   },
-  experimental: {
-    serverComponentsExternalPackages: ['pdfjs-dist'],
-  },
+  serverExternalPackages: ['pdfjs-dist'],
 };
 
 export default nextConfig;
