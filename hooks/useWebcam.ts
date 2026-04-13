@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from 'react';
 
 interface UseWebcamReturn {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  videoRef: React.RefObject<HTMLVideoElement>;
   isActive: boolean;
   error: string | null;
   startWebcam: () => Promise<void>;
@@ -11,7 +11,7 @@ interface UseWebcamReturn {
 }
 
 export function useWebcam(): UseWebcamReturn {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);

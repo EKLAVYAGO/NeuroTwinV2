@@ -1,17 +1,66 @@
 'use client';
 
-import { useEffect } from 'react';
-import { Mic, MicOff, CheckCircle, AlertCircle } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Mic, MicOff, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { GlowCard } from '@/components/ui/GlowCard';
 
-interface VoiceCaptureProps {
-  onVerified: (transcript: string) => void;
+type GlowColor = 'purple' | 'cyan' | 'amber';
+const MIN_CHARS_PER_Q = 50;
+
+export interface QuestionPrompt {
+  type: string;
+  title: string;
+  glow: GlowColor;
+  text: string;
 }
 
-const MIN_CHARS = 100;
+interface VoiceCaptureProps {
+  prompts: QuestionPrompt[];
+  onVerified: (fullTranscript: string, audioData?: string) => void;
+}
 
-export function VoiceCapture({ onVerified }: VoiceCaptureProps) {
+export function VoiceCapture({ prompts, onVerified }: VoiceCaptureProps) {
+  const [qIndex, setQIndex] = useState(0);
+  const [accumulated, setAccumulated] = useState('');
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const accumulatedRef = useRef('');
+
+  useEffect(() => {
+    accumulatedRef.current = accumulated;
+  }, [accumulated]);
+
+  useEffect(() => {
+    let streamRef: MediaStream | null = null;
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      streamRef = stream;
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+         const reader = new FileReader();
+         reader.onloadend = () => {
+           onVerified(accumulatedRef.current.trim(), reader.result as string);
+         };
+         reader.readAsDataURL(blob);
+      };
+      mr.start(2000);
+    }).catch(e => console.error("Audio recording disabled", e));
+
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef) streamRef.getTracks().forEach(t => t.stop());
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const {
     transcript,
     interimTranscript,
@@ -24,31 +73,58 @@ export function VoiceCapture({ onVerified }: VoiceCaptureProps) {
   } = useSpeechRecognition();
 
   const total = transcript + interimTranscript;
-  const isReady = transcript.length >= MIN_CHARS;
-  const progress = Math.min((transcript.length / MIN_CHARS) * 100, 100);
+  const isReady = transcript.length >= MIN_CHARS_PER_Q;
+  const progress = Math.min((transcript.length / MIN_CHARS_PER_Q) * 100, 100);
 
   useEffect(() => {
     if (!isSupported) return;
   }, [isSupported]);
 
+  const handleNext = () => {
+    const newlyAccumulated = accumulated + `\n\nQuestion ${qIndex + 1} [${prompts[qIndex].type}]: ${prompts[qIndex].text}\nAnswer: ${transcript}`;
+    
+    if (qIndex < prompts.length - 1) {
+      setAccumulated(newlyAccumulated);
+      setQIndex(qIndex + 1);
+      resetTranscript();
+    } else {
+      accumulatedRef.current = newlyAccumulated;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+         mediaRecorderRef.current.stop();
+      } else {
+         onVerified(newlyAccumulated.trim());
+      }
+    }
+  };
+
+  const currentPrompt = prompts[qIndex];
+
+  if (!prompts || prompts.length === 0) return <p className="text-gray-500">Loading dynamic questions...</p>;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {/* Sequence indicators */}
+      <div className="flex gap-1 justify-center mb-4 flex-wrap">
+        {prompts.map((p, idx) => (
+          <div key={idx} className={`h-1.5 w-6 rounded-full transition-colors duration-500 flex-shrink-0 ${qIndex >= idx ? (p.glow === 'purple' ? 'bg-nt-purple' : 'bg-nt-cyan') : 'bg-gray-800'}`} />
+        ))}
+      </div>
+
       {/* Prompt */}
-      <GlowCard glowColor="purple" className="p-4">
+      <GlowCard glowColor={currentPrompt.glow} hover={false} className="p-4 transition-all duration-500">
         <div className="flex gap-3">
-          <div className="w-1 rounded-full bg-gradient-to-b from-nt-purple to-nt-cyan flex-shrink-0" />
+          <div className={`w-1 rounded-full flex-shrink-0 ${currentPrompt.glow === 'purple' ? 'bg-gradient-to-b from-nt-purple to-nt-purple/30' : 'bg-gradient-to-b from-nt-cyan to-nt-cyan/30'}`} />
           <div>
-            <p className="text-xs font-mono text-nt-purple mb-1 uppercase tracking-widest">
-              Verification Prompt
-            </p>
-            <p className="text-gray-300 text-sm leading-relaxed">
-              Please verbally explain your most complex technical project.
-              Describe the{' '}
-              <span className="text-white font-medium">problem</span>,{' '}
-              <span className="text-white font-medium">your approach</span>, the{' '}
-              <span className="text-white font-medium">tech stack</span>, and
-              the <span className="text-white font-medium">outcome</span>. Be
-              specific.
+            <div className="flex items-center justify-between mb-1">
+              <p className={`text-xs font-mono uppercase tracking-widest ${currentPrompt.glow === 'purple' ? 'text-nt-purple' : 'text-nt-cyan'}`}>
+                Q{qIndex + 1}/{prompts.length}: {currentPrompt.title}
+              </p>
+              <span className="text-[10px] text-gray-500 font-mono hidden sm:block bg-nt-bg px-2 py-0.5 rounded-full border border-gray-800">
+                {currentPrompt.type}
+              </span>
+            </div>
+            <p className="text-gray-300 text-sm leading-relaxed mt-2">
+              {currentPrompt.text}
             </p>
           </div>
         </div>
@@ -99,7 +175,7 @@ export function VoiceCapture({ onVerified }: VoiceCaptureProps) {
 
       {/* Transcript display */}
       {(transcript || interimTranscript) && (
-        <GlowCard glowColor="cyan" className="p-4">
+        <GlowCard glowColor="cyan" hover={false} className="p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-mono text-gray-600 uppercase tracking-widest">
               Live Transcript
@@ -123,7 +199,7 @@ export function VoiceCapture({ onVerified }: VoiceCaptureProps) {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs font-mono text-gray-600">
             <span>
-              {transcript.length} / {MIN_CHARS} chars min
+              {transcript.length} / {MIN_CHARS_PER_Q} chars min
             </span>
             {isReady && (
               <span className="text-nt-cyan flex items-center gap-1">
@@ -144,17 +220,19 @@ export function VoiceCapture({ onVerified }: VoiceCaptureProps) {
 
       {/* Confirm button */}
       <button
-        disabled={!isReady}
-        onClick={() => onVerified(transcript)}
-        className={`w-full py-3 rounded-xl font-medium text-sm transition-all duration-300 border ${
-          isReady
+        disabled={!isReady || isListening}
+        onClick={handleNext}
+        className={`w-full py-3 rounded-xl font-medium text-sm transition-all duration-300 border flex items-center justify-center gap-2 ${
+          isReady && !isListening
             ? 'bg-nt-cyan/10 border-nt-cyan text-nt-cyan hover:bg-nt-cyan/20 shadow-glow-cyan'
             : 'bg-gray-800/50 border-gray-700 text-gray-600 cursor-not-allowed'
         }`}
       >
-        {isReady
-          ? '✓ Confirm & Create My Digital Twin'
-          : `Speak for at least ${MIN_CHARS - transcript.length} more characters`}
+        {qIndex < prompts.length - 1 ? (
+          <>Next Question <ArrowRight size={16} /></>
+        ) : (
+          '✓ Confirm & Create My Digital Twin'
+        )}
       </button>
     </div>
   );

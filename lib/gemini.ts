@@ -2,8 +2,8 @@ import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-export function getModel(): GenerativeModel {
-  return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+export function getModel(systemInstruction?: string): GenerativeModel {
+  return genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', systemInstruction });
 }
 
 export function buildSystemPrompt(candidateKnowledgeBase: string): string {

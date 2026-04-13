@@ -44,7 +44,7 @@ export function MessageBubble({ message, isPlaying }: MessageBubbleProps) {
             {formatTime(message.timestamp)}
           </span>
 
-          {!isRecruiter && message.evidence && (
+          {!isRecruiter && message.evidenceQuote && (
             <div className="flex items-center gap-1 text-[10px] font-mono text-nt-cyan">
               <ShieldCheck size={10} />
               <span>evidence logged</span>

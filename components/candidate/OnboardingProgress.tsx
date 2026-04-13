@@ -8,8 +8,9 @@ interface OnboardingProgressProps {
 
 const steps = [
   { label: 'Upload Resume', sub: 'PDF extraction' },
+  { label: 'Sync GitHub', sub: 'Code history' },
   { label: 'Verify Identity', sub: 'Webcam check' },
-  { label: 'Record Answer', sub: 'Voice verification' },
+  { label: 'Voice Interview', sub: 'Dual questions' },
 ];
 
 export function OnboardingProgress({ currentStep }: OnboardingProgressProps) {

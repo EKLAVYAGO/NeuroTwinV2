@@ -47,17 +47,23 @@ export interface TwinChatResponse {
 
 // ── UI state ───────────────────────────────────────────────────────────────
 export type MicState = 'idle' | 'recording' | 'processing';
-export type OnboardingStep = 1 | 2 | 3 | 'complete';
+export type OnboardingStep = 1 | 2 | 3 | 4 | 'complete';
 
 // ── Analytics & Voice ──────────────────────────────────────────────────────
 export interface AnalyticsResponse {
   metrics: {
     technical_depth: number;
+    system_design: number;
+    problem_solving: number;
+    code_quality_focus: number;
     communication_clarity: number;
-    confidence_level: number;
     adaptability: number;
+    leadership_ownership: number;
+    cultural_alignment: number;
   };
   personality_archetype: string;
+  detailed_summary: string;
+  recommended_role: string;
   key_strength: string;
   red_flag_warning: string;
 }

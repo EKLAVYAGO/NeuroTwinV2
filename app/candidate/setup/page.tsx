@@ -6,6 +6,7 @@ import { Brain, ArrowLeft, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { OnboardingProgress } from '@/components/candidate/OnboardingProgress';
 import { ResumeUploader } from '@/components/candidate/ResumeUploader';
+import { GitHubSync } from '@/components/candidate/GitHubSync';
 import { WebcamVerification } from '@/components/candidate/WebcamVerification';
 import { VoiceCapture } from '@/components/candidate/VoiceCapture';
 import { GlowCard } from '@/components/ui/GlowCard';
@@ -17,25 +18,58 @@ export default function CandidateSetupPage() {
   const [step, setStep] = useState<OnboardingStep>(1);
   const [resumeText, setResumeText] = useState('');
   const [fileName, setFileName] = useState('');
+  const [githubData, setGithubData] = useState('');
   const [webcamReady, setWebcamReady] = useState(false);
   const [createdId, setCreatedId] = useState('');
+  const [prompts, setPrompts] = useState<any[]>([]);
+  const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
 
-  const handleResumeExtracted = (text: string, name: string) => {
+  const handleResumeExtracted = async (text: string, name: string) => {
     setResumeText(text);
     setFileName(name);
-    setTimeout(() => setStep(2), 700);
+    setIsGeneratingPrompts(true);
+    
+    try {
+      const res = await fetch('/api/twin/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeText: text }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setPrompts(data);
+      } else {
+        setPrompts([{ type: 'Technical', title: 'Fallback Error', glow: 'purple', text: 'Please explain your background.' }]);
+      }
+    } catch {
+       setPrompts([{ type: 'Technical', title: 'Fallback Error', glow: 'purple', text: 'Please explain your background.' }]);
+    }
+    
+    setIsGeneratingPrompts(false);
+    setStep(2);
   };
 
-  const handleVerified = (transcript: string) => {
+  const handleVerified = (fullTranscript: string, audioData?: string) => {
     const candidateName =
       fileName
         .replace('.pdf', '')
         .replace(/[-_]/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase()) || 'Candidate';
 
+    let extractedUsername = 'torvalds'; // default fallback for demo
+    if (githubData.includes('github.com/')) {
+        const parts = githubData.split('github.com/');
+        if (parts[1]) extractedUsername = parts[1].split('/')[0].split('\n')[0].trim();
+    } else if (githubData.trim()) {
+        extractedUsername = githubData.split('\n')[0].trim();
+    }
+
     const profile = addCandidate({
       resumeText,
-      verifiedTranscript: transcript,
+      fullTranscript,
+      githubData,
+      githubUsername: extractedUsername,
+      audioData,
       candidateName,
       fileName,
       uploadedAt: new Date().toISOString(),
@@ -85,14 +119,14 @@ export default function CandidateSetupPage() {
 
         <div className="mb-10">
           <OnboardingProgress
-            currentStep={step === 'complete' ? 4 : (step as number)}
+            currentStep={step === 'complete' ? 5 : (step as number)}
           />
         </div>
 
         <div className="max-w-3xl mx-auto">
           {/* Step 1 */}
           {step === 1 && (
-            <GlowCard glowColor="cyan" hover={false} className="p-6">
+            <GlowCard glowColor="cyan" hover={false} className="p-6 relative">
               <h2 className="text-base font-semibold text-white mb-1">
                 Upload Your Resume
               </h2>
@@ -100,12 +134,31 @@ export default function CandidateSetupPage() {
                 Extracted locally — your raw text becomes the first layer of
                 your knowledge base.
               </p>
-              <ResumeUploader onExtracted={handleResumeExtracted} />
+              
+              {!isGeneratingPrompts ? (
+                <ResumeUploader onExtracted={handleResumeExtracted} />
+              ) : (
+                <div className="py-12 flex flex-col items-center justify-center animate-pulse">
+                  <Brain className="text-nt-purple mb-4 animate-bounce" size={32} />
+                  <p className="text-nt-purple font-mono text-sm tracking-widest uppercase">Analyzing Resume</p>
+                  <p className="text-gray-500 text-xs mt-2">Generating 8 custom tailored questions...</p>
+                </div>
+              )}
             </GlowCard>
           )}
 
-          {/* Step 2 */}
+          {/* Step 2: GitHub Integration */}
           {step === 2 && (
+            <GitHubSync
+              onComplete={(data) => {
+                setGithubData(data);
+                setStep(3);
+              }}
+            />
+          )}
+
+          {/* Step 3 */}
+          {step === 3 && (
             <GlowCard glowColor="cyan" hover={false} className="p-6">
               <h2 className="text-base font-semibold text-white mb-1">
                 Identity Verification
@@ -116,7 +169,7 @@ export default function CandidateSetupPage() {
               <WebcamVerification onReady={() => setWebcamReady(true)} />
               {webcamReady && (
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(4)}
                   className="mt-4 w-full py-3 rounded-xl font-medium text-sm bg-nt-cyan/10 border border-nt-cyan text-nt-cyan hover:bg-nt-cyan/20 transition-all shadow-glow-cyan"
                 >
                   ✓ Confirmed — Proceed to Voice Interview
@@ -125,8 +178,8 @@ export default function CandidateSetupPage() {
             </GlowCard>
           )}
 
-          {/* Step 3 */}
-          {step === 3 && (
+          {/* Step 4 */}
+          {step === 4 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <GlowCard
                 glowColor="cyan"
@@ -141,7 +194,7 @@ export default function CandidateSetupPage() {
                     Active during your recording
                   </p>
                 </div>
-                <WebcamVerification compact />
+                <WebcamVerification compact autoStart={true} />
               </GlowCard>
 
               <GlowCard glowColor="purple" hover={false} className="p-5">
@@ -152,7 +205,7 @@ export default function CandidateSetupPage() {
                   Your answer becomes the second layer of the knowledge base —
                   the "Live Interview" source.
                 </p>
-                <VoiceCapture onVerified={handleVerified} />
+                <VoiceCapture prompts={prompts} onVerified={handleVerified} />
               </GlowCard>
             </div>
           )}

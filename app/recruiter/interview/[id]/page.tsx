@@ -21,8 +21,17 @@ import {
   Activity,
   Flag,
   Zap,
+  ScanLine,
+  Play,
+  Pause,
+  ExternalLink,
+  X,
+  Code,
+  Star,
+  GitFork
 } from 'lucide-react';
 import Link from 'next/link';
+import QRCode from 'react-qr-code';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Radar,
@@ -33,6 +42,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+import { GlowCard } from '@/components/ui/GlowCard';
 import { getCandidate } from '@/lib/store';
 import type { CandidateProfile } from '@/lib/store';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
@@ -111,6 +121,72 @@ export default function InterviewPage() {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isLoading, activeTab]);
+
+  // Phase 5 States
+  const [githubRepos, setGithubRepos] = useState<any[]>([]);
+  const [isFetchingRepos, setIsFetchingRepos] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/t/${candidate?.id || 'demo'}` : '';
+
+  useEffect(() => {
+    if (activeTab === 'analytics' && candidate?.githubUsername && githubRepos.length === 0 && !isFetchingRepos) {
+      const fetchRepos = async () => {
+        setIsFetchingRepos(true);
+        try {
+          const res = await fetch('/api/twin/github', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: candidate.githubUsername }),
+          });
+          const data = await res.json();
+          if (Array.isArray(data)) setGithubRepos(data);
+        } catch (err) {
+          console.error(err);
+        }
+        setIsFetchingRepos(false);
+      };
+      fetchRepos();
+    }
+  }, [activeTab, candidate, githubRepos.length, isFetchingRepos]);
+
+  // Phase 4 Toolkit States
+  const [culture, setCulture] = useState('Startup');
+  const [synergyData, setSynergyData] = useState<any>(null);
+  const [handoffData, setHandoffData] = useState<any>(null);
+  const [emailData, setEmailData] = useState<any>(null);
+  const [isRunningToolkit, setIsRunningToolkit] = useState(false);
+
+  const runToolkit = async (action: string) => {
+    if (!candidate || !analytics) return;
+    setIsRunningToolkit(true);
+    try {
+      const res = await fetch('/api/twin/toolkit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action, 
+          candidateBase: candidate.candidateKnowledgeBase,
+          analyticsContext: analytics.metrics,
+          culture
+        })
+      });
+      const data = await res.json();
+      if (action === 'synergy') setSynergyData(data);
+      if (action === 'handoff') setHandoffData(data);
+      if (action === 'email') setEmailData(data);
+    } catch(e) {}
+    setIsRunningToolkit(false);
+  };
+
+  const exportPDF = async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const element = document.getElementById('exportable-dossier');
+      if (!element) return;
+      html2pdf().from(element).save(`${candidate?.candidateName || 'Candidate'}_Dossier.pdf`);
+    } catch (e) { console.error('Export failed', e); }
+  };
 
   // Trigger Analytics fetch when tab mounts
   useEffect(() => {
@@ -242,27 +318,26 @@ export default function InterviewPage() {
     [candidate, isLoading, voiceEnabled, playVoice]
   );
 
-  const handleMicStart = () => {
+  const handleMicToggle = useCallback(() => {
     if (isLoading) return;
-    resetTranscript();
-    startListening();
-    setMicState('recording');
-  };
-
-  const handleMicStop = () => {
-    stopListening();
-    setMicState('processing');
-    setTimeout(() => {
-      const q = transcript.trim();
+    if (micState === 'recording') {
+      stopListening();
       setMicState('idle');
-      if (q.length > 2) sendQuestion(q);
+    } else {
       resetTranscript();
-    }, 350);
-  };
+      startListening();
+      setMicState('recording');
+    }
+  }, [isLoading, micState, startListening, stopListening, resetTranscript]);
 
   useEffect(() => {
-    if (!isListening && micState === 'recording') setMicState('idle');
-  }, [isListening, micState]);
+    if (isListening && transcript) {
+      setTextInput(transcript);
+    }
+    if (!isListening && micState === 'recording') {
+      setMicState('idle');
+    }
+  }, [isListening, transcript, micState]);
 
   if (!candidate) {
     return (
@@ -274,26 +349,14 @@ export default function InterviewPage() {
 
   const radarData = analytics
     ? [
-        {
-          subject: 'Tech Depth',
-          A: analytics.metrics.technical_depth,
-          fullMark: 100,
-        },
-        {
-          subject: 'Clarity',
-          A: analytics.metrics.communication_clarity,
-          fullMark: 100,
-        },
-        {
-          subject: 'Confidence',
-          A: analytics.metrics.confidence_level,
-          fullMark: 100,
-        },
-        {
-          subject: 'Adaptability',
-          A: analytics.metrics.adaptability,
-          fullMark: 100,
-        },
+        { subject: 'Tech Depth', A: analytics.metrics.technical_depth, fullMark: 100 },
+        { subject: 'Sys Design', A: analytics.metrics.system_design, fullMark: 100 },
+        { subject: 'Prob Solving', A: analytics.metrics.problem_solving, fullMark: 100 },
+        { subject: 'Code Qual', A: analytics.metrics.code_quality_focus, fullMark: 100 },
+        { subject: 'Clarity', A: analytics.metrics.communication_clarity, fullMark: 100 },
+        { subject: 'Adaptability', A: analytics.metrics.adaptability, fullMark: 100 },
+        { subject: 'Leadership', A: analytics.metrics.leadership_ownership, fullMark: 100 },
+        { subject: 'Culture', A: analytics.metrics.cultural_alignment, fullMark: 100 },
       ]
     : [];
 
@@ -374,6 +437,25 @@ export default function InterviewPage() {
         </div>
       </header>
 
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-nt-bg/80 backdrop-blur-md p-6">
+          <GlowCard glowColor="cyan" className="max-w-sm w-full p-8 relative flex flex-col items-center text-center">
+            <button onClick={() => setShowShareModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+              <X size={20} />
+            </button>
+            <div className="w-12 h-12 rounded-full bg-nt-cyan/10 border border-nt-cyan/30 flex items-center justify-center mb-4">
+              <ScanLine size={24} className="text-nt-cyan" />
+            </div>
+            <h3 className="text-xl font-display font-bold text-white mb-2">Share Digital Twin</h3>
+            <p className="text-xs text-gray-400 mb-6 px-4">Scan QR to access the verification dossier and interview simulator for <strong className="text-gray-200">{candidate?.candidateName}</strong>.</p>
+            <div className="bg-white p-4 rounded-2xl mb-4 shadow-[0_0_30px_rgba(0,245,212,0.15)] ring-4 ring-nt-cyan/10">
+              <QRCode value={shareUrl} size={180} />
+            </div>
+            <p className="text-[10px] font-mono text-nt-cyan break-all bg-nt-cyan/10 p-2.5 rounded-lg w-full border border-nt-cyan/20 select-all">{shareUrl}</p>
+          </GlowCard>
+        </div>
+      )}
+
       {/* ── Error banner ── */}
       {error && (
         <div className="relative z-10 flex items-center justify-between px-5 py-2 bg-red-900/20 border-b border-red-700/30 text-red-400 text-xs flex-shrink-0">
@@ -422,7 +504,7 @@ export default function InterviewPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
-              className="absolute inset-0 flex flex-col md:flex-row"
+              className="absolute inset-0 flex flex-col"
             >
               {/* ── Chat Content ── */}
               <div className="flex-1 flex flex-col min-h-0 relative z-10 grid-cols-1 lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_440px] grid">
@@ -445,7 +527,7 @@ export default function InterviewPage() {
                     )}
 
                     {messages.map((msg) => (
-                      <ChatBubble key={msg.id} message={msg} />
+                      <ChatBubble key={msg.id} message={msg} onPlayVoice={playVoice} />
                     ))}
 
                     {isLoading && (
@@ -512,8 +594,7 @@ export default function InterviewPage() {
                       {/* Mic button */}
                       <MicBtn
                         state={micState}
-                        onStart={handleMicStart}
-                        onStop={handleMicStop}
+                        onToggle={handleMicToggle}
                       />
                     </div>
                   </div>
@@ -521,9 +602,24 @@ export default function InterviewPage() {
 
                 {/* RIGHT: Evidence board */}
                 <div className="hidden lg:flex flex-col min-h-0 overflow-hidden">
-                  <EvidencePanel items={evidenceItems} />
+                  <EvidencePanel items={evidenceItems} audioData={candidate?.audioData} />
                 </div>
               </div>
+
+              {/* Phase 4: Evasion Timeline */}
+              {candidate?.fullTranscript && (
+               <div className="px-6 py-4 border-t border-nt-border bg-nt-bg-2/30 overflow-hidden">
+                 <div className="flex items-center justify-between mb-3">
+                   <h4 className="text-[10px] font-mono uppercase text-gray-500 tracking-widest flex items-center gap-1.5"><Brain size={10} className="text-nt-purple" /> Behavioral Timeline Mapping</h4>
+                 </div>
+                 <div className="flex items-center gap-0.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                   {candidate.fullTranscript.split(' ').filter((_, i) => i % 5 === 0).map((word, idx) => {
+                     const isEvasive = /(um|uh|like|hmm|basically)/i.test(word);
+                     return <div key={idx} className={`w-2 h-8 rounded-sm shrink-0 transition-all ${isEvasive ? 'bg-red-500/80 scale-125 mx-1 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-green-500/20'}`} title={isEvasive ? 'Hesitation detected' : 'Clear speech'} />;
+                   })}
+                 </div>
+               </div>
+              )}
             </motion.div>
           ) : (
             <motion.div
@@ -535,7 +631,8 @@ export default function InterviewPage() {
               className="absolute inset-0 overflow-y-auto p-6 flex flex-col items-center bg-nt-bg/50 backdrop-blur-sm"
             >
               {/* ── Analytics Content ── */}
-              <div className="max-w-5xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div id="exportable-dossier" className="max-w-5xl w-full flex flex-col gap-6 pb-20">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Radar Chart Section */}
                 <div className="flex flex-col items-center justify-center bg-nt-bg-2 border border-nt-border rounded-3xl p-8 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-nt-cyan/5 rounded-full blur-3xl pointer-events-none" />
@@ -595,6 +692,20 @@ export default function InterviewPage() {
 
                 {/* Info Cards Section */}
                 <div className="flex flex-col gap-4">
+                  {/* Recommended Role Card */}
+                  <div className="bg-nt-bg-2 border border-nt-border rounded-2xl p-6 flex flex-col justify-center hover:border-nt-purple/40 transition-colors">
+                    <h4 className="text-[10px] font-mono uppercase text-gray-500 tracking-widest mb-1.5 flex items-center gap-1.5">
+                      <Zap size={10} className="text-nt-purple" /> Recommended Fit
+                    </h4>
+                    {isLoadingAnalytics ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-nt-purple animate-ping inline-block" />
+                    ) : (
+                      <p className="text-white font-display text-lg">
+                        {analytics?.recommended_role || '--'}
+                      </p>
+                    )}
+                  </div>
+
                   {/* Archetype Card */}
                   <div className="bg-nt-bg-2 border border-nt-border rounded-2xl p-6 flex items-start gap-4 hover:border-nt-cyan/40 transition-colors">
                     <div className="w-10 h-10 rounded-xl bg-nt-cyan/10 border border-nt-cyan/20 flex items-center justify-center flex-shrink-0 text-nt-cyan">
@@ -651,8 +762,134 @@ export default function InterviewPage() {
                         </p>
                       )}
                     </div>
+                </div>
+                </div>
+                </div>
+
+                {/* Detailed Summary Card Full Width */}
+                <div className="bg-nt-bg-2 border border-nt-border rounded-3xl p-8 flex flex-col gap-4 hover:border-nt-cyan/30 transition-colors">
+                  <h4 className="text-[10px] font-mono uppercase text-nt-cyan tracking-widest flex items-center gap-2">
+                    <Brain size={12} /> Executive Summary
+                  </h4>
+                  {isLoadingAnalytics ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="h-2 bg-gray-800 rounded w-full animate-pulse" />
+                      <div className="h-2 bg-gray-800 rounded w-5/6 animate-pulse" />
+                      <div className="h-2 bg-gray-800 rounded w-4/6 animate-pulse" />
+                    </div>
+                  ) : (
+                    <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                      {analytics?.detailed_summary || '--'}
+                    </p>
+                  )}
+                </div>
+
+                {/* ── PHASE 5: DEVELOPER FOOTPRINT ── */}
+                {candidate?.githubUsername && (
+                  <div className="bg-nt-bg-2 border border-nt-border rounded-3xl p-6 mb-6">
+                    <h4 className="text-[12px] font-mono uppercase text-gray-400 tracking-widest flex items-center gap-2 mb-4">
+                      <Code size={13} className="text-nt-purple" /> GitHub Developer Footprint 
+                      <a href={`https://github.com/${candidate.githubUsername}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-500 hover:text-nt-purple underline flex items-center">@{candidate.githubUsername}</a>
+                    </h4>
+                    {isFetchingRepos ? (
+                      <div className="flex gap-2 text-xs text-gray-600 animate-pulse"><Loader2 size={12} className="animate-spin" /> Digging into repositories...</div>
+                    ) : githubRepos.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {githubRepos.slice(0, 3).map((repo) => (
+                           <a key={repo.id} href={repo.html_url} target="_blank" rel="noopener noreferrer" className="bg-nt-bg-3 border border-gray-800 rounded-2xl p-4 hover:border-nt-purple/30 transition-colors flex flex-col gap-2 group">
+                             <div className="flex justify-between items-start">
+                               <span className="font-semibold text-sm text-gray-200 group-hover:text-nt-purple flex items-center gap-1"><Code size={12}/> <span className="truncate max-w-[120px]">{repo.name}</span></span>
+                               <ExternalLink size={10} className="text-gray-600 group-hover:text-nt-purple flex-shrink-0" />
+                             </div>
+                             <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 min-h-[32px]">
+                               {repo.description || 'No description provided.'}
+                             </p>
+                             <div className="flex gap-4 mt-auto pt-2 items-center">
+                               <span className="text-[10px] text-gray-400 flex items-center gap-1"><Star size={10} className="text-yellow-500/70"/> {repo.stargazers_count}</span>
+                               <span className="text-[10px] text-gray-400 flex items-center gap-1"><GitFork size={10} className="text-nt-cyan/70"/> {repo.forks_count}</span>
+                               {repo.language && <span className="text-[10px] text-gray-400 ml-auto flex items-center gap-1 text-nt-purple">{repo.language}</span>}
+                             </div>
+                           </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-600">No public repositories fetched.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* ── PHASE 4: MICRO TWIN TOOLKIT ── */}
+                <div className="bg-nt-bg-2 border border-nt-border rounded-3xl p-8 flex flex-col gap-6 w-full">
+                  <div className="flex items-center justify-between border-b border-gray-800/60 pb-4 mb-2">
+                    <h4 className="text-[12px] font-mono uppercase text-white tracking-widest flex items-center gap-2">
+                       <Zap size={14} className="text-nt-amber" /> The Closing Kit
+                    </h4>
+                    <div className="flex items-center gap-2">
+                       <button onClick={() => setShowShareModal(true)} className="text-xs font-mono bg-nt-purple/10 border border-nt-purple/30 text-nt-purple hover:bg-nt-purple/20 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                         <ScanLine size={12} /> Share Twin
+                       </button>
+                       <button onClick={exportPDF} className="text-xs bg-nt-cyan/10 border border-nt-cyan/30 text-nt-cyan hover:bg-nt-cyan/20 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                         Export Dossier PDF
+                       </button>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Synergy Simulator */}
+                    <div className="flex flex-col gap-3 bg-nt-bg p-5 rounded-2xl border border-nt-border/60">
+                      <h5 className="font-semibold text-sm text-white">Synergy Simulator</h5>
+                      <p className="text-[11px] text-gray-500">Cross-reference metrics with culture.</p>
+                      <select value={culture} onChange={(e) => setCulture(e.target.value)} className="bg-nt-bg-3 border border-gray-700 text-xs text-white p-2.5 rounded-lg w-full focus:outline-none focus:border-nt-cyan/40 mb-1">
+                        <option value="Startup">High-Velocity Startup</option>
+                        <option value="Corporate">Structured Corporate</option>
+                        <option value="Remote">Asynchronous Remote</option>
+                      </select>
+                      <button onClick={() => runToolkit('synergy')} disabled={isRunningToolkit} className="w-full bg-nt-purple/15 text-nt-purple text-xs py-2 rounded-lg hover:bg-nt-purple/25 transition-colors disabled:opacity-50">
+                        {isRunningToolkit ? 'Simulating...' : 'Forecast Culture Fit'}
+                      </button>
+                      {synergyData && (
+                        <div className="text-xs text-gray-300 mt-2 p-3 bg-nt-bg-2 rounded-xl border border-nt-purple/20">
+                          <span className="text-green-400 font-bold block mb-1.5 text-sm">Score: {synergyData.synergy_score}%</span>
+                          {synergyData.one_sentence_forecast}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Handoff Guide */}
+                    <div className="flex flex-col gap-3 bg-nt-bg p-5 rounded-2xl border border-nt-border/60">
+                      <h5 className="font-semibold text-sm text-white">Manager Handoff</h5>
+                      <p className="text-[11px] text-gray-500">Expose structural weaknesses found.</p>
+                      <button onClick={() => runToolkit('handoff')} disabled={isRunningToolkit} className="w-full bg-red-900/20 text-red-400 text-xs py-2 rounded-lg hover:bg-red-900/40 transition-colors disabled:opacity-50 mt-auto">
+                        {isRunningToolkit ? 'Generating...' : 'Generate Target Questions'}
+                      </button>
+                      {handoffData && handoffData.questions && (
+                         <div className="text-xs text-gray-300 mt-2 p-3 bg-nt-bg-2 rounded-xl border border-red-900/30">
+                           <ul className="space-y-3">
+                             {handoffData.questions.map((q: any, i: number) => (
+                               <li key={i}><strong className="text-red-400 block mb-0.5">{q.theme}</strong> {q.question}</li>
+                             ))}
+                           </ul>
+                         </div>
+                      )}
+                    </div>
+
+                    {/* Email Drafter */}
+                    <div className="flex flex-col gap-3 bg-nt-bg p-5 rounded-2xl border border-nt-border/60">
+                      <h5 className="font-semibold text-sm text-white">Draft Next Steps</h5>
+                      <p className="text-[11px] text-gray-500">AI-generated highly technical outreach.</p>
+                      <button onClick={() => runToolkit('email')} disabled={isRunningToolkit} className="w-full bg-nt-cyan/15 text-nt-cyan text-xs py-2 rounded-lg hover:bg-nt-cyan/25 transition-colors disabled:opacity-50 mt-auto">
+                        {isRunningToolkit ? 'Drafting...' : 'Autocreate Status Email'}
+                      </button>
+                      {emailData && (
+                        <div className="text-xs text-gray-300 mt-2 p-3 bg-nt-bg-2 rounded-xl border border-nt-cyan/20 overflow-y-auto max-h-48 whitespace-pre-wrap">
+                          <strong className="text-white block mb-2">{emailData.subject}</strong>
+                          {emailData.body}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+
               </div>
             </motion.div>
           )}
@@ -663,7 +900,7 @@ export default function InterviewPage() {
 }
 
 // ── Chat bubble ─────────────────────────────────────────────────────────────
-function ChatBubble({ message }: { message: TwinMessage }) {
+function ChatBubble({ message, onPlayVoice }: { message: TwinMessage, onPlayVoice?: (text: string) => void }) {
   const isRecruiter = message.role === 'recruiter';
   return (
     <div className={`flex ${isRecruiter ? 'justify-end' : 'justify-start'}`}>
@@ -697,6 +934,11 @@ function ChatBubble({ message }: { message: TwinMessage }) {
             message.sourceType !== 'Unknown' && (
               <SourceBadge source={message.sourceType} />
             )}
+          {!isRecruiter && onPlayVoice && (
+            <button title="Play Audio" onClick={() => onPlayVoice(message.content)} className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-nt-cyan/10 border border-nt-cyan/30 text-nt-cyan hover:bg-nt-cyan/20 transition-colors ml-1">
+              <Volume2 size={9} /> Hear Voice
+            </button>
+          )}
         </div>
       </div>
       {isRecruiter && (
@@ -711,7 +953,7 @@ function ChatBubble({ message }: { message: TwinMessage }) {
 }
 
 // ── Evidence panel ──────────────────────────────────────────────────────────
-function EvidencePanel({ items }: { items: EvidenceItem[] }) {
+function EvidencePanel({ items, audioData }: { items: EvidenceItem[], audioData?: string }) {
   return (
     <div className="flex flex-col h-full border-l border-nt-border bg-nt-bg-2/50">
       <div className="p-4 border-b border-nt-border flex items-center justify-between flex-shrink-0">
@@ -735,7 +977,7 @@ function EvidencePanel({ items }: { items: EvidenceItem[] }) {
         )}
 
         {items.map((item, idx) => (
-          <EvidenceCard key={item.id} item={item} index={idx + 1} />
+          <EvidenceCard key={item.id} item={item} index={idx + 1} audioData={audioData} />
         ))}
       </div>
 
@@ -752,7 +994,21 @@ function EvidencePanel({ items }: { items: EvidenceItem[] }) {
 }
 
 // ── Evidence card ───────────────────────────────────────────────────────────
-function EvidenceCard({ item, index }: { item: EvidenceItem; index: number }) {
+function EvidenceCard({ item, index, audioData }: { item: EvidenceItem; index: number; audioData?: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleAudio = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
   return (
     <div
       className="rounded-xl border border-amber-800/25 bg-amber-950/15 overflow-hidden"
@@ -785,16 +1041,27 @@ function EvidenceCard({ item, index }: { item: EvidenceItem; index: number }) {
       </div>
 
       {/* Evidence quote */}
-      <div className="px-3 pb-3 pt-1.5">
-        <p className="text-[10px] font-mono text-amber-600/70 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-          <Quote size={9} />
-          Verbatim from knowledge base
-        </p>
+      <div className="px-3 pb-3 pt-1.5 flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+            <p className="text-[10px] font-mono text-amber-600/70 uppercase tracking-widest flex items-center gap-1">
+              <Quote size={9} />
+              Verbatim from knowledge base
+            </p>
+            {item.sourceType === 'Live Interview' && audioData && (
+              <button onClick={toggleAudio} className="text-[9px] font-mono flex items-center gap-1 bg-nt-amber/10 text-nt-amber border border-nt-amber/30 px-1.5 py-0.5 rounded hover:bg-nt-amber/20 transition-colors">
+                {isPlaying ? <Pause size={10} /> : <Play size={10} />}
+                {isPlaying ? 'PAUSE' : 'HEAR SOURCE'}
+              </button>
+            )}
+        </div>
         <blockquote className="border-l-2 border-nt-amber/50 pl-3">
           <p className="text-xs text-amber-100/75 leading-relaxed">
             {item.evidenceQuote}
           </p>
         </blockquote>
+        {item.sourceType === 'Live Interview' && audioData && (
+          <audio ref={audioRef} src={audioData} onEnded={() => setIsPlaying(false)} className="hidden" />
+        )}
       </div>
     </div>
   );
@@ -803,12 +1070,10 @@ function EvidenceCard({ item, index }: { item: EvidenceItem; index: number }) {
 // ── Mic button ──────────────────────────────────────────────────────────────
 function MicBtn({
   state,
-  onStart,
-  onStop,
+  onToggle,
 }: {
   state: MicState;
-  onStart: () => void;
-  onStop: () => void;
+  onToggle: () => void;
 }) {
   const isRec = state === 'recording';
   const isProc = state === 'processing';
@@ -821,10 +1086,7 @@ function MicBtn({
         </>
       )}
       <button
-        onMouseDown={onStart}
-        onMouseUp={onStop}
-        onTouchStart={onStart}
-        onTouchEnd={onStop}
+        onClick={onToggle}
         disabled={isProc}
         className={`relative w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
           isRec

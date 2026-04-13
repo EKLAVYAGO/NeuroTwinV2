@@ -108,7 +108,7 @@ function EvidenceCard({ item, index }: { item: EvidenceItem; index: number }) {
           Source evidence
         </p>
         <blockquote className="border-l-2 border-nt-amber/50 pl-3 text-xs text-amber-100/80 leading-relaxed">
-          {item.evidence}
+          {item.evidenceQuote}
         </blockquote>
       </div>
     </div>

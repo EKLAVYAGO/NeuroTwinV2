@@ -1,17 +1,21 @@
 import { generateId } from './utils';
+import { mockCandidates } from './mockData';
 
 export interface CandidateProfile {
   id: string;
   candidateName: string;
   fileName: string;
   resumeText: string;
-  verifiedTranscript: string;
+  fullTranscript: string;
+  githubUsername?: string;
+  githubData?: string;
+  audioData?: string;
   candidateKnowledgeBase: string;
   uploadedAt: string;
   wordCount: number;
 }
 
-const _pool: Map<string, CandidateProfile> = new Map();
+const _pool: Map<string, CandidateProfile> = new Map(mockCandidates.map(c => [c.id, c]));
 
 export function addCandidate(
   data: Omit<CandidateProfile, 'id' | 'candidateKnowledgeBase' | 'wordCount'>
@@ -22,8 +26,11 @@ export function addCandidate(
     '=== RESUME ===',
     data.resumeText.trim(),
     '',
-    '=== LIVE INTERVIEW TRANSCRIPT ===',
-    data.verifiedTranscript.trim() || '(No interview transcript recorded.)',
+    '=== GITHUB COMMITS & REPOSITORIES ===',
+    data.githubData?.trim() || '(No GitHub data provided.)',
+    '',
+    '=== COMPREHENSIVE INTERVIEW TRANSCRIPT ===',
+    data.fullTranscript?.trim() || '(No transcript recorded.)',
   ].join('\n');
 
   const wordCount = candidateKnowledgeBase.split(/\s+/).filter(Boolean).length;

@@ -22,8 +22,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const model = getModel();
     const systemPrompt = buildSystemPrompt(candidateKnowledgeBase);
+    const model = getModel(systemPrompt);
 
     // Build prior conversation for multi-turn context
     const history = (conversationHistory || []).slice(-8).map((msg) => ({
@@ -32,7 +32,6 @@ export async function POST(req: NextRequest) {
     }));
 
     const result = await model.generateContent({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [...history, { role: 'user', parts: [{ text: question }] }],
       generationConfig: {
         temperature: 0.2, // low — we want grounded, not creative

@@ -8,11 +8,13 @@ import { GlowCard } from '@/components/ui/GlowCard';
 interface WebcamVerificationProps {
   onReady?: () => void;
   compact?: boolean;
+  autoStart?: boolean;
 }
 
 export function WebcamVerification({
   onReady,
   compact = false,
+  autoStart = false,
 }: WebcamVerificationProps) {
   const { videoRef, isActive, error, startWebcam, stopWebcam } = useWebcam();
 
@@ -21,8 +23,11 @@ export function WebcamVerification({
   }, [isActive, onReady]);
 
   useEffect(() => {
+    if (autoStart) {
+      startWebcam();
+    }
     return () => stopWebcam();
-  }, [stopWebcam]);
+  }, [autoStart, startWebcam, stopWebcam]);
 
   return (
     <GlowCard glowColor="cyan" className="overflow-hidden">
